@@ -29,8 +29,8 @@ import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.support.WriteRequest;
+import org.elasticsearch.client.core.AcknowledgedResponse;
 import org.elasticsearch.client.rollup.DeleteRollupJobRequest;
-import org.elasticsearch.client.rollup.DeleteRollupJobResponse;
 import org.elasticsearch.client.rollup.GetRollupCapsRequest;
 import org.elasticsearch.client.rollup.GetRollupCapsResponse;
 import org.elasticsearch.client.rollup.GetRollupIndexCapsRequest;
@@ -40,11 +40,12 @@ import org.elasticsearch.client.rollup.GetRollupJobResponse;
 import org.elasticsearch.client.rollup.GetRollupJobResponse.IndexerState;
 import org.elasticsearch.client.rollup.GetRollupJobResponse.JobWrapper;
 import org.elasticsearch.client.rollup.PutRollupJobRequest;
-import org.elasticsearch.client.rollup.PutRollupJobResponse;
 import org.elasticsearch.client.rollup.StartRollupJobRequest;
 import org.elasticsearch.client.rollup.StartRollupJobResponse;
 import org.elasticsearch.client.rollup.RollableIndexCaps;
 import org.elasticsearch.client.rollup.RollupJobCaps;
+import org.elasticsearch.client.rollup.StopRollupJobRequest;
+import org.elasticsearch.client.rollup.StopRollupJobResponse;
 import org.elasticsearch.client.rollup.job.config.DateHistogramGroupConfig;
 import org.elasticsearch.client.rollup.job.config.GroupConfig;
 import org.elasticsearch.client.rollup.job.config.MetricConfig;
@@ -53,11 +54,13 @@ import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInterval;
+import org.elasticsearch.search.aggregations.metrics.NumericMetricsAggregation;
 import org.elasticsearch.search.aggregations.metrics.AvgAggregationBuilder;
 import org.elasticsearch.search.aggregations.metrics.MaxAggregationBuilder;
 import org.elasticsearch.search.aggregations.metrics.MinAggregationBuilder;
 import org.elasticsearch.search.aggregations.metrics.SumAggregationBuilder;
 import org.elasticsearch.search.aggregations.metrics.ValueCountAggregationBuilder;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.junit.Before;
 
 import java.util.Arrays;
@@ -69,6 +72,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
+import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.either;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
@@ -156,7 +160,7 @@ public class RollupIT extends ESRestHighLevelClientTestCase {
         final RollupClient rollupClient = highLevelClient().rollup();
         execute(putRollupJobRequest, rollupClient::putRollupJob, rollupClient::putRollupJobAsync);
         DeleteRollupJobRequest deleteRollupJobRequest = new DeleteRollupJobRequest(id);
-        DeleteRollupJobResponse deleteRollupJobResponse = highLevelClient().rollup()
+        AcknowledgedResponse deleteRollupJobResponse = highLevelClient().rollup()
             .deleteRollupJob(deleteRollupJobRequest, RequestOptions.DEFAULT);
         assertTrue(deleteRollupJobResponse.isAcknowledged());
     }
@@ -178,7 +182,7 @@ public class RollupIT extends ESRestHighLevelClientTestCase {
             new PutRollupJobRequest(new RollupJobConfig(id, indexPattern, rollupIndex, cron, pageSize, groups, metrics, timeout));
 
         final RollupClient rollupClient = highLevelClient().rollup();
-        PutRollupJobResponse response = execute(putRollupJobRequest, rollupClient::putRollupJob, rollupClient::putRollupJobAsync);
+        AcknowledgedResponse response = execute(putRollupJobRequest, rollupClient::putRollupJob, rollupClient::putRollupJobAsync);
         assertTrue(response.isAcknowledged());
 
         StartRollupJobRequest startRequest = new StartRollupJobRequest(id);
@@ -188,7 +192,7 @@ public class RollupIT extends ESRestHighLevelClientTestCase {
         assertBusy(() -> {
             SearchResponse searchResponse = highLevelClient().search(new SearchRequest(rollupIndex), RequestOptions.DEFAULT);
             assertEquals(0, searchResponse.getFailedShards());
-            assertEquals(1L, searchResponse.getHits().getTotalHits());
+            assertEquals(1L, searchResponse.getHits().getTotalHits().value);
 
             SearchHit searchHit = searchResponse.getHits().getAt(0);
             Map<String, Object> source = searchHit.getSourceAsMap();
@@ -230,6 +234,44 @@ public class RollupIT extends ESRestHighLevelClientTestCase {
         assertThat(job.getStatus().getState(), either(equalTo(IndexerState.STARTED)).or(equalTo(IndexerState.INDEXING)));
         assertThat(job.getStatus().getCurrentPosition(), hasKey("date.date_histogram"));
         assertEquals(true, job.getStatus().getUpgradedDocumentId());
+
+        // stop the job
+        StopRollupJobRequest stopRequest = new StopRollupJobRequest(id);
+        stopRequest.waitForCompletion(randomBoolean());
+        StopRollupJobResponse stopResponse = execute(stopRequest, rollupClient::stopRollupJob, rollupClient::stopRollupJobAsync);
+        assertTrue(stopResponse.isAcknowledged());
+        if (stopRequest.waitForCompletion()) {
+            getResponse = execute(new GetRollupJobRequest(id), rollupClient::getRollupJob, rollupClient::getRollupJobAsync);
+            assertThat(getResponse.getJobs(), hasSize(1));
+            assertThat(getResponse.getJobs().get(0).getStatus().getState(), equalTo(IndexerState.STOPPED));
+        }
+    }
+
+    public void testSearch() throws Exception {
+        testPutStartAndGetRollupJob();
+        SearchRequest search = new SearchRequest(rollupIndex);
+        search.source(new SearchSourceBuilder()
+                .size(0)
+                .aggregation(new AvgAggregationBuilder("avg").field("value")));
+        SearchResponse response = highLevelClient().rollup().search(search, RequestOptions.DEFAULT);
+        assertEquals(0, response.getFailedShards());
+        assertEquals(0, response.getHits().getTotalHits().value);
+        NumericMetricsAggregation.SingleValue avg = response.getAggregations().get("avg");
+        assertThat(avg.value(), closeTo(sum / numDocs, 0.00000001));
+    }
+
+    public void testSearchWithType() throws Exception {
+        SearchRequest search = new SearchRequest(rollupIndex);
+        search.types("a", "b", "c");
+        search.source(new SearchSourceBuilder()
+                .size(0)
+                .aggregation(new AvgAggregationBuilder("avg").field("value")));
+        try {
+            highLevelClient().rollup().search(search, RequestOptions.DEFAULT);
+            fail("types are not allowed but didn't fail");
+        } catch (ValidationException e) {
+            assertEquals("Validation Failed: 1: types are not allowed in rollup search;", e.getMessage());
+        }
     }
 
     public void testGetMissingRollupJob() throws Exception {
@@ -300,7 +342,7 @@ public class RollupIT extends ESRestHighLevelClientTestCase {
             new PutRollupJobRequest(new RollupJobConfig(id, indexPattern, rollupIndex, cron, pageSize, groups, metrics, timeout));
 
         final RollupClient rollupClient = highLevelClient().rollup();
-        PutRollupJobResponse response = execute(putRollupJobRequest, rollupClient::putRollupJob, rollupClient::putRollupJobAsync);
+        AcknowledgedResponse response = execute(putRollupJobRequest, rollupClient::putRollupJob, rollupClient::putRollupJobAsync);
         assertTrue(response.isAcknowledged());
 
         // wait for the PutJob api to create the index w/ metadata
@@ -412,7 +454,7 @@ public class RollupIT extends ESRestHighLevelClientTestCase {
             new PutRollupJobRequest(new RollupJobConfig(id, indexPattern, rollupIndex, cron, pageSize, groups, metrics, timeout));
 
         final RollupClient rollupClient = highLevelClient().rollup();
-        PutRollupJobResponse response = execute(putRollupJobRequest, rollupClient::putRollupJob, rollupClient::putRollupJobAsync);
+        AcknowledgedResponse response = execute(putRollupJobRequest, rollupClient::putRollupJob, rollupClient::putRollupJobAsync);
         assertTrue(response.isAcknowledged());
 
         // wait for the PutJob api to create the index w/ metadata

@@ -19,6 +19,7 @@
 
 package org.elasticsearch.transport;
 
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.Version;
@@ -80,6 +81,7 @@ import static org.elasticsearch.common.settings.Setting.listSetting;
 import static org.elasticsearch.common.settings.Setting.timeSetting;
 
 public class TransportService extends AbstractLifecycleComponent implements TransportMessageListener, TransportConnectionListener {
+    private static final Logger logger = LogManager.getLogger(TransportService.class);
 
     public static final Setting<Integer> CONNECTIONS_PER_NODE_RECOVERY =
         intSetting("transport.connections_per_node.recovery", 2, 1, Setting.Property.NodeScope);
@@ -125,7 +127,8 @@ public class TransportService extends AbstractLifecycleComponent implements Tran
     public static final Setting<List<String>> TRACE_LOG_INCLUDE_SETTING =
         listSetting("transport.tracer.include", emptyList(), Function.identity(), Property.Dynamic, Property.NodeScope);
     public static final Setting<List<String>> TRACE_LOG_EXCLUDE_SETTING =
-        listSetting("transport.tracer.exclude", Arrays.asList("internal:discovery/zen/fd*", TransportLivenessAction.NAME),
+        listSetting("transport.tracer.exclude",
+            Arrays.asList("internal:discovery/zen/fd*", "internal:coordination/fault_detection/*", TransportLivenessAction.NAME),
             Function.identity(), Property.Dynamic, Property.NodeScope);
 
     private final Logger tracerLog;

@@ -20,18 +20,23 @@
 package org.elasticsearch.client;
 
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.client.core.AcknowledgedResponse;
 import org.elasticsearch.client.rollup.DeleteRollupJobRequest;
-import org.elasticsearch.client.rollup.DeleteRollupJobResponse;
 import org.elasticsearch.client.rollup.GetRollupIndexCapsRequest;
 import org.elasticsearch.client.rollup.GetRollupIndexCapsResponse;
 import org.elasticsearch.client.rollup.GetRollupJobRequest;
 import org.elasticsearch.client.rollup.GetRollupJobResponse;
 import org.elasticsearch.client.rollup.GetRollupCapsRequest;
 import org.elasticsearch.client.rollup.GetRollupCapsResponse;
+import org.elasticsearch.client.rollup.GetRollupJobRequest;
+import org.elasticsearch.client.rollup.GetRollupJobResponse;
 import org.elasticsearch.client.rollup.PutRollupJobRequest;
-import org.elasticsearch.client.rollup.PutRollupJobResponse;
 import org.elasticsearch.client.rollup.StartRollupJobRequest;
 import org.elasticsearch.client.rollup.StartRollupJobResponse;
+import org.elasticsearch.client.rollup.StopRollupJobRequest;
+import org.elasticsearch.client.rollup.StopRollupJobResponse;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -60,11 +65,11 @@ public class RollupClient {
      * @return the response
      * @throws IOException in case there is a problem sending the request or parsing back the response
      */
-    public PutRollupJobResponse putRollupJob(PutRollupJobRequest request, RequestOptions options) throws IOException {
+    public AcknowledgedResponse putRollupJob(PutRollupJobRequest request, RequestOptions options) throws IOException {
         return restHighLevelClient.performRequestAndParseEntity(request,
             RollupRequestConverters::putJob,
             options,
-            PutRollupJobResponse::fromXContent,
+            AcknowledgedResponse::fromXContent,
             Collections.emptySet());
     }
 
@@ -76,11 +81,11 @@ public class RollupClient {
      * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
      * @param listener the listener to be notified upon request completion
      */
-    public void putRollupJobAsync(PutRollupJobRequest request, RequestOptions options, ActionListener<PutRollupJobResponse> listener) {
+    public void putRollupJobAsync(PutRollupJobRequest request, RequestOptions options, ActionListener<AcknowledgedResponse> listener) {
         restHighLevelClient.performRequestAsyncAndParseEntity(request,
             RollupRequestConverters::putJob,
             options,
-            PutRollupJobResponse::fromXContent,
+            AcknowledgedResponse::fromXContent,
             listener, Collections.emptySet());
     }
 
@@ -119,6 +124,40 @@ public class RollupClient {
     }
 
     /**
+     * Stop a rollup job
+     * See <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/rollup-stop-job.html">
+     * the docs</a> for more.
+     * @param request the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @return the response
+     * @throws IOException in case there is a problem sending the request or parsing back the response
+     */
+    public StopRollupJobResponse stopRollupJob(StopRollupJobRequest request, RequestOptions options)  throws IOException {
+        return restHighLevelClient.performRequestAndParseEntity(request,
+            RollupRequestConverters::stopJob,
+            options,
+            StopRollupJobResponse::fromXContent,
+            Collections.emptySet());
+    }
+
+    /**
+     * Asynchronously stop a rollup job
+     * See <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/rollup-stop-job.html">
+     * the docs</a> for more.
+     * @param request the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @param listener the listener to be notified upon request completion
+     */
+    public void stopRollupJobAsync(StopRollupJobRequest request, RequestOptions options,
+            ActionListener<StopRollupJobResponse> listener) {
+        restHighLevelClient.performRequestAsyncAndParseEntity(request,
+            RollupRequestConverters::stopJob,
+            options,
+            StopRollupJobResponse::fromXContent,
+            listener, Collections.emptySet());
+    }
+
+    /**
      * Delete a rollup job from the cluster
      * See <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/rollup-delete-job.html">
      * the docs</a> for more.
@@ -127,11 +166,11 @@ public class RollupClient {
      * @return the response
      * @throws IOException in case there is a problem sending the request or parsing back the response
      */
-    public DeleteRollupJobResponse deleteRollupJob(DeleteRollupJobRequest request, RequestOptions options) throws IOException {
+    public AcknowledgedResponse deleteRollupJob(DeleteRollupJobRequest request, RequestOptions options) throws IOException {
         return restHighLevelClient.performRequestAndParseEntity(request,
             RollupRequestConverters::deleteJob,
             options,
-            DeleteRollupJobResponse::fromXContent,
+            AcknowledgedResponse::fromXContent,
             Collections.emptySet());
     }
     /**
@@ -144,11 +183,11 @@ public class RollupClient {
      */
     public void deleteRollupJobAsync(DeleteRollupJobRequest request,
                                      RequestOptions options,
-                                     ActionListener<DeleteRollupJobResponse> listener) {
+                                     ActionListener<AcknowledgedResponse> listener) {
         restHighLevelClient.performRequestAsyncAndParseEntity(request,
             RollupRequestConverters::deleteJob,
             options,
-            DeleteRollupJobResponse::fromXContent,
+            AcknowledgedResponse::fromXContent,
             listener, Collections.emptySet());
     }
 
@@ -185,6 +224,42 @@ public class RollupClient {
             options,
             GetRollupJobResponse::fromXContent,
             listener, Collections.emptySet());
+    }
+
+    /**
+     * Perform a rollup search.
+     * See <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/rollup-search.html">
+     * the docs</a> for more.
+     * @param request the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @return the response
+     * @throws IOException in case there is a problem sending the request or parsing back the response
+     */
+    public SearchResponse search(SearchRequest request, RequestOptions options) throws IOException {
+        return restHighLevelClient.performRequestAndParseEntity(
+                request,
+                RollupRequestConverters::search,
+                options,
+                SearchResponse::fromXContent,
+                Collections.emptySet());
+    }
+
+    /**
+     * Perform a rollup search.
+     * See <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/rollup-search.html">
+     * the docs</a> for more.
+     * @param request the request
+     * @param options the request options (e.g. headers), use {@link RequestOptions#DEFAULT} if nothing needs to be customized
+     * @param listener the listener to be notified upon request completion
+     */
+    public void searchAsync(SearchRequest request, RequestOptions options, ActionListener<SearchResponse> listener) {
+        restHighLevelClient.performRequestAsyncAndParseEntity(
+                request,
+                RollupRequestConverters::search,
+                options,
+                SearchResponse::fromXContent,
+                listener,
+                Collections.emptySet());
     }
 
     /**
